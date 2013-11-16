@@ -1,6 +1,7 @@
 package simulations
 
 import common._
+import scala.annotation.tailrec
 
 class Wire {
   private var sigVal = false
@@ -58,16 +59,63 @@ abstract class CircuitSimulator extends Simulator {
   // to complete with orGates and demux...
   //
 
-  def orGate(a1: Wire, a2: Wire, output: Wire) {
-    ???
+  def orGate(a1: Wire, a2: Wire, output: Wire) = {
+    def orAction() {
+      val a1Sig = a1.getSignal
+      val a2Sig = a2.getSignal
+      afterDelay(OrGateDelay) { output.setSignal(a1Sig || a2Sig) }
+    }
+    a1 addAction orAction
+    a2 addAction orAction
   }
   
-  def orGate2(a1: Wire, a2: Wire, output: Wire) {
-    ???
+  def orGate2(a1: Wire, a2: Wire, output: Wire) = {
+    val b1, b2, c = new Wire
+    
+    inverter(a1, b1)
+    inverter(a2, b2)
+    
+    andGate(b1, b2, c)
+    
+    inverter(c, output)
   }
 
-  def demux(in: Wire, c: List[Wire], out: List[Wire]) {
-    ???
+  def demux(in: Wire, c: List[Wire], out: List[Wire]) = {
+    assert(out.length == math.pow(2, c.length))
+    def ifConnect(input: Wire, switcher: Wire, out1: Wire, out2: Wire) = {
+      val notSwitcher = new Wire
+      inverter(switcher, notSwitcher)
+      andGate(input, switcher, out1)
+      andGate(input, notSwitcher, out2)
+    }
+    
+    @tailrec
+    def demuxInner(/*ins: List[Wire], */cs: List[Wire], outs: List[Wire]): Unit = {
+      cs match {
+        case ch :: ct => { //latest switcher
+          outs match {
+            case o1 :: o2 :: Nil => {
+              ifConnect(in, ch, o1, o2)
+              Nil
+            }
+            case _ => {
+              val gr = outs.grouped(2)
+              val newOuts: List[Wire] = gr.map(ls => ls match {
+                case h :: t :: Nil => {
+                  val ret = new Wire
+                  ifConnect(ret, ch, h, t)
+                  ret
+                } 
+                case _ => throw new Exception("should not be reachable")
+              }).toList
+              demuxInner(ct, newOuts)
+            }
+          }
+        }
+        case _ => Nil 
+      }
+    }
+    demuxInner(c, out)
   }
 
 }
