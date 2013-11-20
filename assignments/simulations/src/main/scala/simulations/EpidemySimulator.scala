@@ -19,7 +19,7 @@ class EpidemySimulator extends Simulator {
   
   def neighbor(pos: Coords, dir: Coords): Coords = {
     //the additional roomCols to be able to subtract small numbers
-    Tuple2((pos._1 + dir._1 + SimConfig.roomRows) % SimConfig.roomRows, (pos._1 + dir._1 + SimConfig.roomColumns) % SimConfig.roomColumns)
+    Tuple2((pos._1 + dir._1 + SimConfig.roomRows) % SimConfig.roomRows, (pos._2 + dir._2 + SimConfig.roomColumns) % SimConfig.roomColumns)
   }
   
   
@@ -35,8 +35,8 @@ class EpidemySimulator extends Simulator {
     val immunityTime: Int = 16
     val healthTime: Int = 18
     
-    val transmitablility: Double = 0.4
-    val prevalence: Double = 0.1
+    val transmitability: Double = 0.4
+    val prevalence: Double = 0.01
   }
 
   import SimConfig._
@@ -45,39 +45,55 @@ class EpidemySimulator extends Simulator {
       .map(id => new Person(id))
       .toList
       
-  persons.foreach(p => if(happens(prevalence)) infect(p))
-  
   val flat = new Flat
+  
+  persons.foreach(p => flat.insertPerson(p.coords, p))
+  persons.take((population * prevalence).toInt).foreach(infectAction(_))//messed up way to determine the sick
+  persons.foreach(p => initiateMovement(p))
+  
+  def initiateMovement(p: Person): Unit = {
+    val delay = randomBelow(5) + 1
+    afterDelay(delay)(moveRandomly(p))
+  } 
   
   def moveRandomly(p: Person): Unit = {
     if(!p.dead) {
       val n = getNeigbors(p.coords)
       //potential rooms to go to
-      val pot = n.filter(p => flat.getSet(p).forall(! _.sick)) //nice!
+      val pot = n.filter(pos => flat.getSet(pos).forall(! _.sick)) //nice!
       if(!pot.isEmpty) {
         val target: Coords = pot(randomBelow(pot.length))
         flat.movePerson(p, target)
+        if(flat.getSet(p.coords).exists(p => p.infected)) {
+          if(happens(transmitability)) {
+            infectAction(p)
+          }
+        }
       }
-      //TODO plan next random move
+      initiateMovement(p)
     }
   }
-  //actual infection
-  def infect(p: Person): Unit = {
-    //you have to be really healthy to get sick
+  
+  def infectAction(p: Person): Unit = {
     if(!p.infected && !p.sick && !p.immune && !p.dead) {
       p.infected = true
+      afterDelay(incubationTime)(getSick(p))
+      afterDelay(probableDeathTime)(probablyDie(p))
+      afterDelay(immunityTime)(immunize(p))
+      afterDelay(healthTime)(recover(p))
+    }
+  }
+ 
+  def getSick(p: Person): Unit = {
+    if(!p.dead) {
+      p.sick = true
     }
   }
   
   def probablyDie(p: Person): Unit = {
+    assert(!p.immune)
     if(happens(deathProbability)) {
       p.dead = true
-    }
-  }
-  
-  def getSick(p: Person): Unit = {
-    if(!p.dead) {
-      p.sick = true
     }
   }
   
@@ -110,7 +126,6 @@ class EpidemySimulator extends Simulator {
     //
     // to complete with simulation logic
     //
-    flat.insertPerson((row, col), this)
   }
   type Coords = Tuple2[Int, Int]
   class Flat {

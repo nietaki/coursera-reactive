@@ -68,6 +68,28 @@ class CircuitSuite extends CircuitSimulator with FunSuite {
     
     assert(out.getSignal === true, "or 3")
   }
+  
+   test("small demux") {
+    val in, c, o0, o1 = new Wire
+    val cs = c :: Nil
+    val o = o1 :: o0 :: Nil
+    demux(in, cs, o)
+
+    run
+    assert(o0.getSignal === false)
+    assert(o1.getSignal === false)
+
+    in.setSignal(true)
+    run
+    assert(o0.getSignal === true)
+    assert(o1.getSignal === false)
+    
+    in.setSignal(true)
+    c.setSignal(true)
+    run
+    assert(o0.getSignal === false)
+    assert(o1.getSignal === true)
+  } 
  test("demux") {
     val in, c0, c1, o0, o1, o2, o3 = new Wire
     val c = c1 :: c0 :: Nil
@@ -91,10 +113,17 @@ class CircuitSuite extends CircuitSimulator with FunSuite {
     c0.setSignal(true)
     run
     assert(o3.getSignal === false)
-    assert(o2.getSignal === true)
+    assert(o2.getSignal === false)
+    assert(o1.getSignal === true)
+    assert(o0.getSignal === false)
+    
+    in.setSignal(true)
+    c0.setSignal(true)
+    c1.setSignal(true)
+    run
+    assert(o3.getSignal === true)
+    assert(o2.getSignal === false)
     assert(o1.getSignal === false)
     assert(o0.getSignal === false)
-   
   } 
-
 }

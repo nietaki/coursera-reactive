@@ -82,11 +82,13 @@ abstract class CircuitSimulator extends Simulator {
 
   def demux(in: Wire, c: List[Wire], out: List[Wire]) = {
     assert(out.length == math.pow(2, c.length))
+    
+    //if false, out1, if true, out2
     def ifConnect(input: Wire, switcher: Wire, out1: Wire, out2: Wire) = {
       val notSwitcher = new Wire
       inverter(switcher, notSwitcher)
-      andGate(input, switcher, out1)
-      andGate(input, notSwitcher, out2)
+      andGate(input, switcher, out2)
+      andGate(input, notSwitcher, out1)
     }
     
     @tailrec
@@ -94,8 +96,8 @@ abstract class CircuitSimulator extends Simulator {
       cs match {
         case ch :: ct => { //latest switcher
           outs match {
-            case o1 :: o2 :: Nil => {
-              ifConnect(in, ch, o1, o2)
+            case o1 :: o0 :: Nil => {
+              ifConnect(in, ch, o0, o1)
               Nil
             }
             case _ => {
@@ -103,7 +105,7 @@ abstract class CircuitSimulator extends Simulator {
               val newOuts: List[Wire] = gr.map(ls => ls match {
                 case h :: t :: Nil => {
                   val ret = new Wire
-                  ifConnect(ret, ch, h, t)
+                  ifConnect(ret, ch, t, h)
                   ret
                 } 
                 case _ => throw new Exception("should not be reachable")
@@ -115,7 +117,7 @@ abstract class CircuitSimulator extends Simulator {
         case _ => Nil 
       }
     }
-    demuxInner(c, out)
+    demuxInner(c.reverse, out)
   }
 
 }
