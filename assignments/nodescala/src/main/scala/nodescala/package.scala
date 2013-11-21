@@ -5,6 +5,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
+import scala.collection.mutable.ListBuffer
 
 /** Contains basic data types, data structures and `Future` extensions.
  */
@@ -16,20 +17,34 @@ package object nodescala {
 
     /** Returns a future that is always completed with `value`.
      */
-    def always[T](value: T): Future[T] = ???
+    def always[T](value: T): Future[T] = Future(value) 
 
     /** Returns a future that is never completed.
      *
      *  This future may be useful when testing if timeout logic works correctly.
      */
-    def never[T]: Future[T] = ???
+    def never[T]: Future[T] = future {
+      while (true) {
+      }
+      throw new Exception("this will never end")
+    }
 
     /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`.
      *  The returned future is completed only once all of the futures in `fs` have been completed.
      *  The values in the list are in the same order as corresponding futures `fs`.
      *  If any of the futures `fs` fails, the resulting future also fails.
      */
-    def all[T](fs: List[Future[T]]): Future[List[T]] = ???
+    def all[T](fs: List[Future[T]]): Future[List[T]] = { //async would be easy here
+      val successful = Promise[List[T]]()
+      successful.success(Nil)
+      val successfulFuture: Future[List[T]] = future {Nil}
+      fs.foldRight(/*successful.future*/ successfulFuture) {
+        //(f, acc) => for {x <-f; xs <- acc } yield x :: xs
+        (f, acc) => {
+          f.flatMap{x: T => acc.map{xs: List[T] => x::xs }}
+        }
+      }
+    }
 
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
      *  If the first completing future in `fs` fails, then the result is failed as well.
@@ -40,11 +55,20 @@ package object nodescala {
      *
      *  may return a `Future` succeeded with `1`, `2` or failed with an `Exception`.
      */
-    def any[T](fs: List[Future[T]]): Future[T] = ???
+    def any[T](fs: List[Future[T]]): Future[T] = {
+      val promise = Promise[T]()
+      fs.foreach(promise.tryCompleteWith(_))
+      promise.future
+    }
 
     /** Returns a future with a unit value that is completed after time `t`.
      */
-    def delay(t: Duration): Future[Unit] = ???
+    def delay(t: Duration): Future[Unit] = future {
+      blocking {
+        Thread.sleep(t.toMillis)
+        Unit
+      }
+    } 
 
     /** Completes this future with user input.
      */
@@ -54,8 +78,12 @@ package object nodescala {
 
     /** Creates a cancellable context for an execution and runs it.
      */
-    def run()(f: CancellationToken => Future[Unit]): Subscription = ???
-
+    def run()(f: CancellationToken => Future[Unit]): Subscription =  {
+      val cts = CancellationTokenSource.apply() //mind your own business, in this case it makes it more readable to me
+      f.apply(cts.cancellationToken)
+      cts
+    }
+        
   }
 
   /** Adds extension methods to future objects.
@@ -132,7 +160,20 @@ package object nodescala {
   object CancellationTokenSource {
     /** Creates a new `CancellationTokenSource`.
      */
-    def apply(): CancellationTokenSource = ???
+    def apply(): CancellationTokenSource = new CancellationTokenSource {
+      
+      val p = Promise[Unit]()
+      
+      def unsubscribe(): Unit = {
+        p.trySuccess(Unit)
+      }
+      
+      val ct: CancellationToken = new CancellationToken {
+        def isCancelled = p.isCompleted
+      } 
+      
+      def cancellationToken = ct
+    } 
   }
 
 }
