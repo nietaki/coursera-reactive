@@ -13,38 +13,27 @@ object Main {
     // TO IMPLEMENT
     // 1. instantiate the server at 8191, relative path "/test",
     //    and have the response return headers of the request
+    val subscriptionPromise = Promise[Subscription]
     val myServer = new NodeScala.Default(8191)
-    val myServerSubscription = myServer.start("/test")(req => "This is a sample response".split(" ").iterator)
-
-    // TO IMPLEMENT
-    // 2. create a future that expects some user input `x`
-    //    and continues with a `"You entered... " + x` message
-    val userInterrupted: Future[String] = Future.userInput("please respond") 
-    // TO IMPLEMENT
-    // 3. create a future that completes after 20 seconds
-    //    and continues with a `"Server timeout!"` message
-    
+    lazy val myChatSubscription = myServer.start("/chat")(chatHandler)
+    subscriptionPromise.success(myChatSubscription)
+    lazy val chatHandler: nodescala.NodeScala.Request => nodescala.NodeScala.Response = req => { 
+      val res = Await.result(operatorResponse, 10 minutes)
+      if (res == "quit") {
+        subscriptionPromise.future.onSuccess(_ match {case s: Subscription => s.unsubscribe()})
+      }
+      List(res).iterator
+    }
+    def operatorResponse: Future[String] = {
+      val userMessage = Future.userInput("please respond to chat message: \n")
+      val timeoutMessage = messageAfterTimeout("chat operator timeout!", 10 seconds)
+      Future.any(List(userMessage, timeoutMessage))
+    }
     def messageAfterTimeout(message: String, timeout: Duration): Future[String] = {
       val p = Promise[String]
       val f = Future.delay(timeout)
       f.onComplete(sth => p.success(message))
       p.future
-    }
-    
-    val timeOut: Future[String] = messageAfterTimeout("Server timeout!", 20 seconds)
-    // TO IMPLEMENT
-    // 4. create a future that completes when either 10 seconds elapse
-    //    or the user enters some text and presses ENTER
-    val terminationRequested: Future[String] = 
-      Future.any(timeOut :: userInterrupted :: Nil) 
-
-    // TO IMPLEMENT
-    // 5. unsubscribe from the server
-    terminationRequested onSuccess {
-      case msg => {
-        myServerSubscription.unsubscribe()
-        println("bye")
-      }
     }
   }
 
