@@ -84,6 +84,9 @@ class SwingApiTest extends FunSuite {
     textField.text = "Turi"
     textField.text = "Turin"
     textField.text = "Turing"
+    
+    println(observed)
+    println("dupa")
 
     assert(observed == Seq("T", "Tu", "Tur", "Turi", "Turin", "Turing"), observed)
   }

@@ -10,6 +10,9 @@ import scala.util.{ Try, Success, Failure }
 import scala.swing.Reactions.Reaction
 import scala.swing.event.Event
 import rx.lang.scala.Observable
+import rx.lang.scala.Observer
+import rx.lang.scala.Subscription
+import rx.lang.scala.subscriptions.BooleanSubscription
 
 /** Basic facilities for dealing with Swing-like components.
 *
@@ -51,8 +54,15 @@ trait SwingApi {
       * @param field the text field
       * @return an observable with a stream of text field updates
       */
-    def textValues: Observable[String] = ???
-
+    def textValues: Observable[String] = Observable({observer: Observer[String] => 
+      val r: Reaction = {
+        case ValueChanged(t) => observer.onNext(t.text);
+      }
+      field.subscribe(r)
+      
+      BooleanSubscription({field.unsubscribe(r); observer.onCompleted()})
+    })
+    
   }
 
   implicit class ButtonOps(button: Button) {
@@ -62,8 +72,15 @@ trait SwingApi {
      * @param field the button
      * @return an observable with a stream of buttons that have been clicked
      */
-    def clicks: Observable[Button] = ???
-
+    def clicks: Observable[Button] = Observable({observer: Observer[Button] => 
+      val r: Reaction = {
+        case ButtonClicked(b) => observer.onNext(b);
+      }
+      button.subscribe(r)
+      
+      BooleanSubscription({button.unsubscribe(r); observer.onCompleted()})
+    })
+  
   }
 
 }
