@@ -1,0 +1,7 @@
+.cache
+.classpath
+.project
+target/*
+*.class
+project/target/*
+project/project/*
