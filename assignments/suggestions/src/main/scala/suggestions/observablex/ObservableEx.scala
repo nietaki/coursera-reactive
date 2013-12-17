@@ -20,7 +20,7 @@ object ObservableEx {
    * @param f future whose values end up in the resulting observable
    * @return an observable completed after producing the value of the future, or with an exception
    */
-  def apply[T](f: Future[T])(implicit execContext: ExecutionContext): Observable[T] = Observable({observer: Observer[T] => 
+  def apply[T](f: Future[T])(implicit execContext: ExecutionContext): Observable[T] = {
     
       val rs = ReplaySubject[T]()
       f.onSuccess {
@@ -29,7 +29,6 @@ object ObservableEx {
       f.onFailure {
         case f => rs.onError(f)
       }
-      
-      BooleanSubscription {rs.onError(new Exception("cancelled by user"))}
-    })
+      rs
+  }
 }

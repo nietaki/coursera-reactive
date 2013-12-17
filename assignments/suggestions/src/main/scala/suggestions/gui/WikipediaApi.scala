@@ -12,6 +12,9 @@ import rx.subscriptions.CompositeSubscription
 import rx.lang.scala.Observable
 import observablex._
 import search._
+import rx.lang.scala.Notification
+import rx.lang.scala.Notification._
+import rx.lang.scala.subjects.ReplaySubject
 
 trait WikipediaApi {
 
@@ -48,15 +51,32 @@ trait WikipediaApi {
      *
      * E.g. `1, 2, 3, !Exception!` should become `Success(1), Success(2), Success(3), Failure(Exception), !TerminateStream!`
      */
-    def recovered: Observable[Try[T]] = ???
-
+    def recovered: Observable[Try[T]] = {
+      obs.map(_ match {
+        case x => Success(x)
+      }).onErrorReturn(f => Failure(f))
+    }
+    
+    def delay(t: Duration): Future[Unit] = future {
+      blocking {
+        Thread.sleep(t.toMillis)
+        Unit
+      }
+    } 
     /** Emits the events from the `obs` observable, until `totalSec` seconds have elapsed.
      *
      * After `totalSec` seconds, if `obs` is not yet completed, the result observable becomes completed.
      *
      * Note: uses the existing combinators on observables.
      */
-    def timedOut(totalSec: Long): Observable[T] = ???
+    def timedOut(totalSec: Long): Observable[T] = {
+      val rs = ReplaySubject[T]()
+      obs.subscribe(rs)
+      val s = delay(totalSec seconds)
+      s.onComplete {_ => rs.onCompleted()}
+      
+      rs
+  }
 
 
     /** Given a stream of events `obs` and a method `requestMethod` to map a request `T` into
@@ -84,7 +104,9 @@ trait WikipediaApi {
      *
      * Observable(Success(1), Succeess(1), Succeess(1), Succeess(2), Succeess(2), Succeess(2), Succeess(3), Succeess(3), Succeess(3))
      */
-    def concatRecovered[S](requestMethod: T => Observable[S]): Observable[Try[S]] = ???
+    def concatRecovered[S](requestMethod: T => Observable[S]): Observable[Try[S]] = {
+      obs.flatMap(x => requestMethod(x).recovered)
+    }
 
   }
 
