@@ -66,7 +66,14 @@ class BinaryTreeSet extends Actor {
 
   // optional
   /** Accepts `Operation` and `GC` messages. */
-  val normal: Receive = { case _ => ??? }
+  val normal: Receive = { 
+    case op: Operation => root ! op;
+    case GC => {
+      //TODO create new root
+      //FIXME null
+      //context.become(garbageCollecting(null), false)
+    }
+  }
 
   // optional
   /** Handles messages while garbage collection is performed.
@@ -98,10 +105,83 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
 
   // optional
   def receive = normal
-
+  
+  def potentiallyInvolvedChild(targetElem: Int): Option[ActorRef] = {
+    if(targetElem < elem) {
+      subtrees.get(Left)
+    } else if(targetElem > elem) {
+      subtrees.get(Right)
+    } else {
+      None
+    }
+  }
+  
+  def addChild(childsElem: Int, initiallyRemoved: Boolean): ActorRef = {
+    val childPos: Position =  if(childsElem < elem) Left else Right;
+    val ar = context.actorOf(BinaryTreeNode.props(childsElem, initiallyRemoved))
+    subtrees += Tuple2(childPos, ar)
+    ar
+  }
+  
   // optional
   /** Handles `Operation` messages and `CopyTo` requests. */
-  val normal: Receive = { case _ => ??? }
+  val normal: Receive = { 
+    case op: Operation => {
+      val pic = potentiallyInvolvedChild(op.elem)
+      val thisIsTarget = op.elem == elem
+      op match {
+        // Insert
+        case Insert(requester, id, reqElem) => {
+          if(thisIsTarget) {
+            this.removed = false;
+            requester ! OperationFinished(id)
+          } else {
+            pic match {
+              case None => {
+                addChild(op.elem, false)
+                requester ! OperationFinished(id)
+              }
+              case Some(child) => {
+                child ! op
+              }
+            }
+          }
+        }
+        // Remove
+        case Remove(requester, id, reqElem) => {
+          if(thisIsTarget) {
+            this.removed = true;
+            requester ! OperationFinished(id)
+          } else {
+            pic match {
+              case None => {
+                requester ! OperationFinished(id)
+              }
+              case Some(child) => {
+                child ! op
+              }
+            }
+          }
+        }
+        // Contains
+        case Contains(requester, id, reqElem) => {
+          if(thisIsTarget) {
+            requester ! ContainsResult(id, !this.removed)
+          } else {
+            pic match {
+              case None => {
+                requester ! ContainsResult(id, false)
+              } 
+              case Some(child) => {
+                child ! op
+              }
+            }
+          }
+        }
+      }
+      
+    }
+  }
 
   // optional
   /** `expected` is the set of ActorRefs whose replies we are waiting for,
