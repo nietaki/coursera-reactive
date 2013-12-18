@@ -5,6 +5,7 @@ package actorbintree
 
 import akka.actor._
 import scala.collection.immutable.Queue
+//import java.util.SelfComparable
 
 object BinaryTreeSet {
 
@@ -69,9 +70,9 @@ class BinaryTreeSet extends Actor {
   val normal: Receive = { 
     case op: Operation => root ! op;
     case GC => {
-      //TODO create new root
-      //FIXME null
-      //context.become(garbageCollecting(null), false)
+      val newRoot = createRoot
+      context.become(garbageCollecting(newRoot), false)
+      root ! BinaryTreeNode.CopyTo(newRoot)
     }
   }
 
@@ -80,7 +81,25 @@ class BinaryTreeSet extends Actor {
     * `newRoot` is the root of the new binary tree where we want to copy
     * all non-removed elements into.
     */
-  def garbageCollecting(newRoot: ActorRef): Receive = ???
+  def garbageCollecting(newRoot: ActorRef): Receive = {
+    case op: Operation => {
+      pendingQueue = pendingQueue.enqueue(op)
+    }
+    case GC => {
+      //passive-aggressive ignoring
+    }
+    case BinaryTreeNode.CopyFinished => {
+      context.stop(root)
+      root = newRoot
+      while(!pendingQueue.isEmpty){
+        var tuple = pendingQueue.dequeue
+        pendingQueue = tuple._2
+        root ! tuple._1
+      }
+      //pendingQueue.foreach(op => root ! op)
+      context.unbecome()
+    }
+  }
 
 }
 
@@ -122,6 +141,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     subtrees += Tuple2(childPos, ar)
     ar
   }
+  def copyId: Int = elem //FIXME?
   
   // optional
   /** Handles `Operation` messages and `CopyTo` requests. */
@@ -179,7 +199,19 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           }
         }
       }
-      
+    }
+    case CopyTo(target) => {
+      //insert myself into the target
+      if(!this.removed)
+        target ! Insert(context.self, copyId, elem)
+      //tell children to copy themselves to the target
+      subtrees.values.foreach(child => child ! CopyTo(target))
+      //start awaiting for all copying actions to be completed
+      if(!subtrees.values.toSet.isEmpty || !this.removed) {
+        context.become(copying(subtrees.values.toSet, this.removed), true)
+      } else {
+        context.parent ! CopyFinished
+      }
     }
   }
 
@@ -187,6 +219,28 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
   /** `expected` is the set of ActorRefs whose replies we are waiting for,
     * `insertConfirmed` tracks whether the copy of this node to the new tree has been confirmed.
     */
-  def copying(expected: Set[ActorRef], insertConfirmed: Boolean): Receive = ???
+  def copying(expected: Set[ActorRef], insertConfirmed: Boolean): Receive = {
+    case OperationFinished(id) => {
+      if (id == copyId) {
+        if (expected.isEmpty) {
+          //nothing left to do
+          context.parent ! CopyFinished
+          context.become(normal, true)
+        } else {
+          //still gotta wait for the children to be copied
+          context.become(copying(expected, true), true)
+        }
+      }
+    }
+    case CopyFinished => {
+      val newExpected = expected - context.sender
+      if(insertConfirmed && newExpected.isEmpty) {
+        context.parent ! CopyFinished
+        context.become(normal, true)
+      } else {
+        context.become(copying(newExpected, insertConfirmed))
+      }
+    }
+  }
 
 }
